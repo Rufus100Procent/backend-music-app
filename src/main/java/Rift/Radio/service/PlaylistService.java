@@ -1,5 +1,8 @@
 package Rift.Radio.service;
 
+import Rift.Radio.dto.CreatePlaylistDto;
+import Rift.Radio.dto.PlaylistDto;
+import Rift.Radio.dto.SongDto;
 import Rift.Radio.error.ErrorType;
 import Rift.Radio.error.PlaylistException;
 import Rift.Radio.modal.Playlist;
@@ -10,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -25,11 +29,18 @@ public class PlaylistService {
         this.songRepository = songRepository;
     }
 
-    public Playlist createPlaylist(Playlist playlist) {
-        if (playlistRepository.existsByName(playlist.getName())) {
-            throw new PlaylistException(ErrorType.PLAYLIST_ALREADY_EXISTS, "Playlist name already exists");
+    public CreatePlaylistDto createPlaylist(CreatePlaylistDto dto) {
+        if (playlistRepository.existsByName(dto.getPlaylistName())) {
+            throw new PlaylistException(ErrorType.PLAYLIST_ALREADY_EXISTS,
+                    "Playlist name already exists");
         }
-        return playlistRepository.save(playlist);
+        Playlist playlist = new Playlist();
+        playlist.setName(dto.getPlaylistName());
+        playlist.setDescription(dto.getDescription());
+
+        playlistRepository.save(playlist);
+
+        return dto;
     }
 
     public Playlist addSongToPlaylist(Long playlistId, Long songId) {
@@ -56,14 +67,74 @@ public class PlaylistService {
         return playlistRepository.save(playlist);
     }
 
-    public List<Song> listSongsInPlaylist(Long playlistId) {
+    public PlaylistDto listSongsInPlaylist(Long playlistId) {
         Playlist playlist = playlistRepository.findById(playlistId)
-                .orElseThrow(() -> new PlaylistException(ErrorType.PLAYLIST_NOT_FOUND, "Playlist not found"));
-        return new ArrayList<>(playlist.getSongs());
+                .orElseThrow(() -> new PlaylistException(
+                        ErrorType.PLAYLIST_NOT_FOUND,
+                        "Playlist not found"
+                ));
+
+        PlaylistDto dto = new PlaylistDto();
+        dto.setPlaylistId(playlist.getId());
+        dto.setPlaylistName(playlist.getName());
+        dto.setDescription(playlist.getDescription());
+
+        List<SongDto> songDtos = new ArrayList<>();
+
+        if (playlist.getSongs() != null) {
+            for (Song song : playlist.getSongs()) {
+                SongDto songDto = new SongDto();
+                songDto.setId(song.getId());
+                songDto.setSongName(song.getSongName());
+                songDto.setArtistName(song.getArtistName());
+                songDto.setGenre(song.getGenre());
+                songDto.setLiked(song.isLiked());
+                songDto.setReleaseYear(song.getReleaseYear());
+                songDto.setAlbum(song.getAlbum());
+                songDto.setFilePath(song.getFilePath());
+                songDtos.add(songDto);
+            }
+        }
+
+        dto.setSongDtos(songDtos);
+
+        dto.setTotalSongs(String.valueOf(songDtos.size()));
+
+        return dto;
     }
 
-    public List<Playlist> listAllPlaylists() {
-        return playlistRepository.findAll();
+    public List<PlaylistDto> listAllPlaylists() {
+        List<Playlist> playlists = playlistRepository.findAll();
+        List<PlaylistDto> result = new ArrayList<>();
+
+        for (Playlist playlist : playlists) {
+            PlaylistDto dto = new PlaylistDto();
+            dto.setPlaylistId(playlist.getId());
+            dto.setPlaylistName(playlist.getName());
+            dto.setDescription(playlist.getDescription());
+            dto.setTotalSongs(playlist.getTotalSongs());
+
+            List<SongDto> songDtos = new ArrayList<>();
+            if (playlist.getSongs() != null) {
+                for (Song song : playlist.getSongs()) {
+                    SongDto songDto = new SongDto();
+                    songDto.setId(song.getId());
+                    songDto.setSongName(song.getSongName());
+                    songDto.setArtistName(song.getArtistName());
+                    songDto.setGenre(song.getGenre());
+                    songDto.setLiked(song.isLiked());
+                    songDto.setReleaseYear(song.getReleaseYear());
+                    songDto.setAlbum(song.getAlbum());
+                    songDto.setFilePath(song.getFilePath());
+                    songDtos.add(songDto);
+                }
+            }
+
+            dto.setSongDtos(songDtos);
+            result.add(dto);
+        }
+
+        return result;
     }
 
 }

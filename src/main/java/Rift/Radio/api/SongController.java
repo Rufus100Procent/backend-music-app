@@ -1,9 +1,12 @@
 package Rift.Radio.api;
 
+import Rift.Radio.dto.CreateSongDto;
+import Rift.Radio.dto.SongDto;
 import Rift.Radio.error.SongException;
 import Rift.Radio.modal.Song;
 import Rift.Radio.service.SongService;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -36,7 +39,7 @@ public class SongController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "50") @Min(1) @Max(100) int pageSize) {
         try {
-            List<Song> songs = songService.getAllSongs(page, pageSize);
+            List<SongDto> songs = songService.getAllSongs(page, pageSize);
             return ResponseEntity.ok(songs);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -46,14 +49,11 @@ public class SongController {
 
     @PostMapping("/upload")
     public ResponseEntity<?> uploadFile(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam("songName") @NotBlank String songName,
-            @RequestParam("artistName") @NotBlank String artistName,
-            @RequestParam("album") String album,
-            @RequestParam("releaseYear") @Min(1800) @Max(2025) int releaseYear,
-            @RequestParam("genre") String genre) {
+            @RequestPart("file") MultipartFile file,
+            @RequestPart("data") @Valid CreateSongDto dto) {
+
         try {
-            Song song = songService.uploadSong(file, songName, artistName, album, releaseYear, genre);
+            Song song = songService.uploadSong(file, dto);
             return ResponseEntity.ok(song);
         } catch (SongException e) {
             return handleSongException(e);
@@ -107,14 +107,10 @@ public class SongController {
     @PutMapping("/{id}/edit")
     public ResponseEntity<?> editSong(
             @PathVariable Long id,
-            @RequestParam(value = "file", required = false) MultipartFile file,
-            @RequestParam("songName") @NotBlank String songName,
-            @RequestParam("artistName") @NotBlank String artistName,
-            @RequestParam("album") String album,
-            @RequestParam("releaseYear") @Min(1900) @Max(2023) int releaseYear,
-            @RequestParam("genre") String genre) {
+            @RequestPart(value = "file", required = false) MultipartFile file,
+            @RequestPart("data") @Valid CreateSongDto dto) {
         try {
-            Song updatedSong = songService.editSong(id, file, songName, artistName, album, releaseYear, genre);
+            Song updatedSong = songService.editSong(id, file, dto);
             return ResponseEntity.ok(updatedSong);
         } catch (SongException e) {
             return handleSongException(e);
@@ -123,6 +119,7 @@ public class SongController {
                     .body("Internal server error");
         }
     }
+
 
     @GetMapping("/{id}/download")
     public void downloadSong(@PathVariable Long id, HttpServletResponse response) {

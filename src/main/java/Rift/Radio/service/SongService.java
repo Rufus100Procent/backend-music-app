@@ -1,5 +1,7 @@
 package Rift.Radio.service;
 
+import Rift.Radio.dto.CreateSongDto;
+import Rift.Radio.dto.SongDto;
 import Rift.Radio.error.ErrorType;
 import Rift.Radio.error.SongException;
 import Rift.Radio.modal.Song;
@@ -22,6 +24,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -37,57 +40,60 @@ public class SongService {
         this.songRepository = songRepository;
     }
 
-    public Song uploadSong(MultipartFile file, String songName, String artistName,
-                           String album, int releaseYear, String genre) {
+    public Song uploadSong(MultipartFile file, CreateSongDto dto) {
 
-        log.info("Starting upload process for song '{}' by '{}'", songName, artistName);
+        log.info("Starting upload process for song '{}' by '{}'",
+                dto.getSongName(), dto.getArtistName());
 
-        if (songRepository.existsBySongName(songName)) {
-            log.error("Upload aborted – duplicate song name: '{}'", songName);
+        if (songRepository.existsBySongName(dto.getSongName())) {
             throw new SongException(ErrorType.Duplicated_SONG, "Song name already exists");
         }
 
+        validateYear(dto.getReleaseYear());
         validateFile(file);
 
         try {
             Path resourceDirectory = Paths.get(System.getProperty("user.dir"),
                     "src", "main", "resources", "localstorage", "mp3");
+
             File storageDir = resourceDirectory.toFile();
             if (!storageDir.exists() && !storageDir.mkdirs()) {
-                log.error("Failed to create storage directory at '{}'", storageDir.getAbsolutePath());
                 throw new SongException(ErrorType.FILE_STORAGE_ERROR, "Could not create storage directory");
             }
 
             String cleanName = StringUtils.hasText(file.getOriginalFilename())
                     ? file.getOriginalFilename() : "untitled.mp3";
             String fileName = StringUtils.cleanPath(cleanName);
+
             String filePath = resourceDirectory.resolve(fileName).toString();
 
             if (songRepository.existsByFilePath(filePath)) {
-                log.error("Upload aborted – file already exists at '{}'", filePath);
                 throw new SongException(ErrorType.MP3_ALREADY_EXIST, "MP3 file already uploaded");
             }
 
-            log.debug("Transferring file to '{}'", filePath);
             file.transferTo(new File(filePath));
 
             Song song = new Song();
-            song.setSongName(songName);
-            song.setArtistName(artistName);
-            song.setAlbum(album);
-            song.setReleaseYear(releaseYear);
-            song.setGenre(genre);
+            song.setSongName(dto.getSongName());
+            song.setArtistName(dto.getArtistName());
+            song.setAlbum(dto.getAlbum());
+            song.setReleaseYear(dto.getReleaseYear());
+            song.setGenre(dto.getGenre());
             song.setFilePath(filePath);
 
-            Song savedSong = songRepository.save(song);
-            log.info("Upload successful – song '{}' saved", savedSong.getSongName());
-            return savedSong;
+            return songRepository.save(song);
 
         } catch (IOException e) {
-            log.error("Upload error for '{}': {}", songName, e.getMessage());
             throw new SongException(ErrorType.FILE_NOT_FOUND, "Failed to upload the song", e);
         }
     }
+
+    private void validateYear(int year) {
+        if (year < 1800 || year > 2025) {
+            throw new SongException(ErrorType.INVALID_DATE, "Year must be between 1800 and 2025");
+        }
+    }
+
 
     private void validateFile(MultipartFile file) {
 
@@ -157,14 +163,29 @@ public class SongService {
 
     }
 
-    public List<Song> getAllSongs(int page, int pageSize) {
+    public List<SongDto> getAllSongs(int page, int pageSize) {
 
         List<Song> songs = songRepository.findAll(PageRequest.of(page, pageSize)).getContent();
         log.info("Fetched {} songs from page {} (page size {})", songs.size(), page, pageSize);
 
-        return songs;
+        List<SongDto> result = new ArrayList<>();
 
+        for (Song song : songs) {
+            SongDto dto = new SongDto();
+            dto.setId(song.getId());
+            dto.setSongName(song.getSongName());
+            dto.setArtistName(song.getArtistName());
+            dto.setLiked(song.isLiked());
+            dto.setReleaseYear(song.getReleaseYear());
+            dto.setAlbum(song.getAlbum());
+            dto.setGenre(song.getGenre());
+            dto.setFilePath(song.getFilePath());
+            result.add(dto);
+        }
+
+        return result;
     }
+
 
     public void deleteSong(Long id) {
 
@@ -191,33 +212,46 @@ public class SongService {
 
     }
 
-    public Song editSong(Long id, MultipartFile file, String songName, String artistName,
-                         String album, int releaseYear, String genre) {
+    public Song editSong(Long id, MultipartFile file, CreateSongDto dto) {
 
         log.info("Initiating update for song ID {}", id);
+
         Song song = songRepository.findById(id).orElseThrow(() -> {
             log.error("Update failed – song with ID {} not found", id);
             return new SongException(ErrorType.SONG_NOT_FOUND, "Song not found");
         });
 
-        if (songRepository.existsBySongNameAndIdNot(songName, id)) {
-            log.error("Update aborted – duplicate song name: '{}'", songName);
+        if (songRepository.existsBySongNameAndIdNot(dto.getSongName(), id)) {
+            log.error("Update aborted – duplicate song name: '{}'", dto.getSongName());
             throw new SongException(ErrorType.Duplicated_SONG, "Song name already exists");
         }
 
+        validateYear(dto.getReleaseYear());
+
         if (file != null && !file.isEmpty()) {
             log.info("Processing file update for song ID {}", id);
+
             File oldFile = new File(song.getFilePath());
             if (oldFile.exists() && oldFile.delete()) {
                 log.info("Old file '{}' removed", song.getFilePath());
             } else {
                 log.warn("Old file '{}' could not be removed or did not exist", song.getFilePath());
             }
+
             validateFile(file);
-            String fileName = StringUtils.cleanPath(
-                    StringUtils.hasText(file.getOriginalFilename()) ? file.getOriginalFilename() : "untitled.mp3");
-            String storagePath = "src/main/resources/LocalStorage/MP3/";
-            String newFilePath = storagePath + fileName;
+
+            Path resourceDirectory = Paths.get(System.getProperty("user.dir"),
+                    "src", "main", "resources", "localstorage", "mp3");
+            File storageDir = resourceDirectory.toFile();
+            if (!storageDir.exists() && !storageDir.mkdirs()) {
+                log.error("Failed to create storage directory at '{}'", storageDir.getAbsolutePath());
+                throw new SongException(ErrorType.FILE_STORAGE_ERROR, "Could not create storage directory");
+            }
+
+            String cleanName = StringUtils.hasText(file.getOriginalFilename())
+                    ? file.getOriginalFilename() : "untitled.mp3";
+            String fileName = StringUtils.cleanPath(cleanName);
+            String newFilePath = resourceDirectory.resolve(fileName).toString();
 
             if (songRepository.existsByFilePath(newFilePath)) {
                 log.error("Update aborted – file already exists at '{}'", newFilePath);
@@ -234,15 +268,16 @@ public class SongService {
                 throw new SongException(ErrorType.FILE_NOT_FOUND, "Failed to update the song", e);
             }
         }
-        song.setSongName(songName);
-        song.setArtistName(artistName);
-        song.setAlbum(album);
-        song.setReleaseYear(releaseYear);
-        song.setGenre(genre);
+
+        song.setSongName(dto.getSongName());
+        song.setArtistName(dto.getArtistName());
+        song.setAlbum(dto.getAlbum());
+        song.setReleaseYear(dto.getReleaseYear());
+        song.setGenre(dto.getGenre());
+
         Song updatedSong = songRepository.save(song);
         log.info("Song ID {} updated successfully", id);
         return updatedSong;
-
     }
 
     public void downloadSong(Long id, HttpServletResponse response) {

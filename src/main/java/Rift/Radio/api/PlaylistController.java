@@ -1,9 +1,12 @@
 package Rift.Radio.api;
 
+import Rift.Radio.dto.CreatePlaylistDto;
+import Rift.Radio.dto.PlaylistDto;
 import Rift.Radio.error.PlaylistException;
 import Rift.Radio.modal.Playlist;
 import Rift.Radio.modal.Song;
 import Rift.Radio.service.PlaylistService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,15 +28,15 @@ public class PlaylistController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Playlist>> listAllPlaylists() {
-        List<Playlist> playlists = playlistService.listAllPlaylists();
+    public ResponseEntity<List<PlaylistDto>> listAllPlaylists() {
+        List<PlaylistDto> playlists = playlistService.listAllPlaylists();
         return ResponseEntity.ok(playlists);
     }
 
     @PostMapping
-    public ResponseEntity<?> createPlaylist(@RequestBody Playlist playlist) {
+    public ResponseEntity<?> createPlaylist(@RequestBody @Valid CreatePlaylistDto dto) {
         try {
-            Playlist created = playlistService.createPlaylist(playlist);
+            CreatePlaylistDto created = playlistService.createPlaylist(dto);
             return ResponseEntity.status(HttpStatus.CREATED).body(created);
         } catch (PlaylistException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
@@ -53,8 +56,8 @@ public class PlaylistController {
     }
 
     @GetMapping("/{playlistId}/songs")
-    public ResponseEntity<List<Song>> listSongsInPlaylist(@PathVariable Long playlistId) {
-        List<Song> songs = playlistService.listSongsInPlaylist(playlistId);
+    public ResponseEntity<PlaylistDto> listSongsInPlaylist(@PathVariable Long playlistId) {
+        PlaylistDto songs = playlistService.listSongsInPlaylist(playlistId);
         return ResponseEntity.ok(songs);
     }
 
